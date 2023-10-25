@@ -85,7 +85,7 @@ void Image::load() {
 
   // TODO: Support resizing images using a simple algoritm
   fscanf(m_file, "%zu", &width);
-  assert(width == 909 && "Images should have the width of 910");
+  assert(width == 909 && "Images should have a width of 909");
   skipComment();
 
   fscanf(m_file, "%zu", &m_height);
@@ -163,17 +163,77 @@ int main(int argc, char **argv) {
   img1.load();
   img2.load();
 
+  // Telemetry block A
+  int telem_a[16] = {
+	32, // WEDGE #1
+	64, // WEDGE #2
+	96, // WEDGE #3
+	128, // WEDGE #4
+	160, // WEDGE #5
+	192, // WEDGE #6
+	224, // WEDGE #7
+	255, // WEDGE #8
+	0, // Zero Modulation Reference
+	32, // Thermistor Temp. #1
+	32, // Thermistor Temp. #2
+	32, // Thermistor Temp. #3
+	32, // Thermistor Temp. #4
+	96, // Patch Temp.
+	0, // Back Scan
+	64 // Channel I.D. Wedge
+  };
+
+  // Telemetry block B
+  int telem_b[16] = {
+	32, // WEDGE #1
+	64, // WEDGE #2
+	96, // WEDGE #3
+	128, // WEDGE #4
+	160, // WEDGE #5
+	192, // WEDGE #6
+	224, // WEDGE #7
+	255, // WEDGE #8
+	0, // Zero Modulation Reference
+	32, // Thermistor Temp. #1
+	32, // Thermistor Temp. #2
+	32, // Thermistor Temp. #3
+	32, // Thermistor Temp. #4
+	96, // Patch Temp.
+	96, // Back Scan
+	128 // Channel I.D. Wedge
+  };
+
   auto height = max(img1.height(), img2.height());
   for (size_t line = 0; line < height; line++) {
     auto frame_line = line % 128;
+
+    int marker = 0;
+
+    if(frame_line == 0 | frame_line == 1)
+    	marker = 1;
+    else if(frame_line == 2 | frame_line == 3)
+	marker = 2;
 
     // Sync A
     for (size_t i = 0; i < strlen(SYNCA); i++)
       write_value(SYNCA[i] == '0' ? 0 : 255);
 
     // Space A
-    for (size_t i = 0; i < 47; i++)
-      write_value(0);
+    if (marker == 1)
+    {
+	    for (size_t i = 0; i < 47; i++)
+              write_value(0);
+    }
+    else if (marker == 2)
+    {
+	    for (size_t i = 0; i < 47; i++)
+              write_value(255);
+    }
+    else
+    {
+	    for (size_t i = 0; i < 47; i++)
+              write_value(0);
+    }
 
     // Image A
     for (size_t i = 0; i < img1.width(); i++) {
@@ -184,13 +244,9 @@ int main(int argc, char **argv) {
     }
 
     // Telemetry A
+    size_t wedge = frame_line / 8;
+    auto v = telem_a[wedge];
     for (size_t i = 0; i < 45; i++) {
-      size_t wedge = frame_line / 8;
-      auto v = 0;
-      if (wedge < 8) {
-        wedge++;
-        v = (int)(255.0 * (wedge % 8 / 8.0));
-      }
       write_value(v);
     }
 
@@ -199,8 +255,21 @@ int main(int argc, char **argv) {
       write_value(SYNCB[i] == '0' ? 0 : 255);
 
     // Space B
-    for (size_t i = 0; i < 47; i++)
-      write_value(255);
+    if (marker == 1)
+    {
+	    for (size_t i = 0; i < 47; i++)
+              write_value(0);
+    }
+    else if (marker == 2)
+    {
+	    for (size_t i = 0; i < 47; i++)
+              write_value(255);
+    }
+    else
+    {
+	    for (size_t i = 0; i < 47; i++)
+              write_value(255);
+    }
 
     // Image B
     for (size_t i = 0; i < img2.width(); i++) {
@@ -213,11 +282,7 @@ int main(int argc, char **argv) {
     // Telemetry B
     for (size_t i = 0; i < 45; i++) {
       size_t wedge = frame_line / 8;
-      auto v = 0;
-      if (wedge < 8) {
-        wedge++;
-        v = (int)(255.0 * (wedge % 8 / 8.0));
-      }
+      auto v = telem_b[wedge];
       write_value(v);
     }
   }
