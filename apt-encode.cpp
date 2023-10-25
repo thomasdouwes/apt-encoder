@@ -203,6 +203,11 @@ int main(int argc, char **argv) {
 	128 // Channel I.D. Wedge
   };
 
+  // Space A value
+  int space_a_value = 0;
+  // Space B value
+  int space_b_value = 255;
+
   auto height = max(img1.height(), img2.height());
   for (size_t line = 0; line < height; line++) {
     auto frame_line = line % 128;
@@ -232,7 +237,7 @@ int main(int argc, char **argv) {
     else
     {
 	    for (size_t i = 0; i < 47; i++)
-              write_value(0);
+              write_value(space_a_value);
     }
 
     // Image A
@@ -268,7 +273,7 @@ int main(int argc, char **argv) {
     else
     {
 	    for (size_t i = 0; i < 47; i++)
-              write_value(255);
+              write_value(space_b_value);
     }
 
     // Image B
