@@ -21,6 +21,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <vector>
 
 // Utils
 
@@ -157,11 +158,37 @@ int main(int argc, char **argv) {
   // If there are two images, use them as the left and right images
   // respectively, otherwise use the same image for both channels.
 
-  Image img1(argv[1]);
-  Image img2(argv[argc < 3 ? 1 : 2]);
+  std::vector<Image> images;
+  for(int i=1; i<argc; i++)
+  {
+	images.push_back(Image(argv[i]));
+	images[i-1].load();
+  }
 
-  img1.load();
-  img2.load();
+  struct t_channel_plan
+  {
+ 	int start_frame; // frame to start using this channel
+	int channel_a; // AVHRR channel from 1-6 for APT channel A
+	int image_a; // which image to use for APT channel B
+	int space_a; // value for space A
+	int channel_b; // AVHRR channel from 1-6 for APT channel B
+	int image_b; // which image to use for APT channel B
+	int space_b; // value for space B
+  };
+
+
+
+  // struct t_channel_plan channel_plan[4] = {
+  //   {0, 3, 2, 255, 4, 1, 255},
+  //   {16, 1, 0, 0, 4, 1, 255},
+  //   {30, 3, 2, 255, 4, 1, 255},
+  // };
+
+  struct t_channel_plan channel_plan[1] = {
+    {0, 2, 0, 0, 4, 1, 255},
+  };
+
+  int channel_plans = sizeof(channel_plan) / sizeof(struct t_channel_plan);
 
   // Telemetry block A
   int telem_a[16] = {
@@ -180,7 +207,7 @@ int main(int argc, char **argv) {
 	32, // Thermistor Temp. #4
 	96, // Patch Temp.
 	0, // Back Scan
-	64 // Channel I.D. Wedge
+	0 // Channel I.D. Wedge (defined in channel plan)
   };
 
   // Telemetry block B
@@ -200,50 +227,70 @@ int main(int argc, char **argv) {
 	32, // Thermistor Temp. #4
 	96, // Patch Temp.
 	96, // Back Scan
-	128 // Channel I.D. Wedge
+	0 // Channel I.D. Wedge (defined in channel plan)
   };
 
   // Space A value
-  int space_a_value = 0;
+  int space_a_value; // (defined in channel plan)
   // Space B value
-  int space_b_value = 255;
+  int space_b_value; // (defined in channel plan)
 
-  auto height = max(img1.height(), img2.height());
+  Image* cha_image;
+  Image* chb_image;
+
+  int marker[4] = {0, 0, 255, 255};
+
+  int channel_plan_current = 0;
+
+  auto height = images[0].height();
+
   for (size_t line = 0; line < height; line++) {
-    auto frame_line = line % 128;
+    // channel selection
+    int frame = line / 128;
+    int frame_line = line % 128;
+    if(!frame_line)
+    {
+        for(int i=0; i < channel_plans; i++)
+        {
+            if(channel_plan[i].start_frame <= frame)
+            {
+                channel_plan_current = i;
+                break;
+            }
+        }
+	
+	telem_a[15] = channel_plan[channel_plan_current].channel_a * 32;
+	telem_b[15] = channel_plan[channel_plan_current].channel_b * 32;
+	space_a_value = channel_plan[channel_plan_current].space_a;
+	space_b_value = channel_plan[channel_plan_current].space_b;
+	cha_image = &images[channel_plan[channel_plan_current].image_a];
+	chb_image = &images[channel_plan[channel_plan_current].image_b];
+    }
 
-    int marker = 0;
-
-    if(frame_line == 0 | frame_line == 1)
-    	marker = 1;
-    else if(frame_line == 2 | frame_line == 3)
-	marker = 2;
+    // marker
+    if(line % 120 < 4)
+    {
+	space_a_value = marker[line % 120];
+	space_b_value = marker[line % 120];
+    }
+    if(line % 120 == 4) // very hacky
+    {
+	space_a_value = channel_plan[channel_plan_current].space_a;
+	space_b_value = channel_plan[channel_plan_current].space_b;
+    }
 
     // Sync A
     for (size_t i = 0; i < strlen(SYNCA); i++)
       write_value(SYNCA[i] == '0' ? 0 : 255);
 
     // Space A
-    if (marker == 1)
-    {
-	    for (size_t i = 0; i < 47; i++)
-              write_value(0);
-    }
-    else if (marker == 2)
-    {
-	    for (size_t i = 0; i < 47; i++)
-              write_value(255);
-    }
-    else
-    {
-	    for (size_t i = 0; i < 47; i++)
-              write_value(space_a_value);
-    }
+    for (size_t i = 0; i < 47; i++)
+        write_value(space_a_value);
 
     // Image A
-    for (size_t i = 0; i < img1.width(); i++) {
-      if (line < img1.height())
-        write_value(img1.getPixel(i, line));
+    for (size_t i = 0; i < cha_image->width(); i++) {
+      if (line < cha_image->height())
+        write_value(cha_image->getPixel(i, line));
       else
         write_value(0);
     }
@@ -260,26 +307,13 @@ int main(int argc, char **argv) {
       write_value(SYNCB[i] == '0' ? 0 : 255);
 
     // Space B
-    if (marker == 1)
-    {
-	    for (size_t i = 0; i < 47; i++)
-              write_value(0);
-    }
-    else if (marker == 2)
-    {
-	    for (size_t i = 0; i < 47; i++)
-              write_value(255);
-    }
-    else
-    {
-	    for (size_t i = 0; i < 47; i++)
-              write_value(space_b_value);
-    }
+    for (size_t i = 0; i < 47; i++)
+        write_value(space_b_value);
 
     // Image B
-    for (size_t i = 0; i < img2.width(); i++) {
-      if (line < img2.height())
-        write_value(img2.getPixel(i, line));
+    for (size_t i = 0; i < chb_image->width(); i++) {
+      if (line < chb_image->height())
+        write_value(chb_image->getPixel(i, line));
       else
         write_value(0);
     }
@@ -292,7 +326,10 @@ int main(int argc, char **argv) {
     }
   }
 
-  img1.free();
-  img2.free();
+  for(int i=1; i<argc; i++)
+  {
+	images[i-1].free();
+  }
+
   return 0;
 }
